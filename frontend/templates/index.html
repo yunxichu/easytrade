@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>外盘商品走势分析与预测系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>外盘商品走势分析与预测系统</h1>
+            <p class="subtitle">实时数据 · 智能分析 · 价格预测</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="commoditySelect">选择商品：</label>
+                <select id="commoditySelect">
+                    <option value="">请选择商品</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="periodSelect">时间周期：</label>
+                <select id="periodSelect">
+                    <option value="1mo">1个月</option>
+                    <option value="3mo">3个月</option>
+                    <option value="6mo">6个月</option>
+                    <option value="1y" selected>1年</option>
+                    <option value="2y">2年</option>
+                    <option value="5y">5年</option>
+                </select>
+            </div>
+            <button id="analyzeBtn" class="btn-primary">开始分析</button>
+            <a href="/analysis" class="btn-primary" style="text-decoration: none; display: inline-block;">期限结构与策略分析</a>
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>正在加载数据，请稍候...</p>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <div id="results" class="results hidden">
+            <section class="info-section">
+            <h2>商品信息</h2>
+            <div id="commodityInfo" class="info-grid"></div>
+            </section>
+
+            <section class="chart-section">
+                <h2>K线图</h2>
+                <div id="candlestickChart" class="chart"></div>
+            </section>
+
+            <section class="chart-section">
+                <h2>价格走势与均线</h2>
+                <div id="priceChart" class="chart"></div>
+            </section>
+
+            <section class="chart-section">
+                <h2>价格预测（未来30天）</h2>
+                <div id="predictionChart" class="chart"></div>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
