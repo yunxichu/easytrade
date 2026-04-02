@@ -563,5 +563,83 @@ def backtest_strategy(commodity_key, period='1y'):
     return jsonify(result)
 
 
+@app.route('/api/market/overview', methods=['GET'])
+def market_overview():
+    """一次性返回所有商品的最新行情摘要"""
+    results = []
+    for key, value in SUPPORTED_COMMODITIES.items():
+        symbol = value['symbol']
+        info = get_contract_info(symbol)
+        if info:
+            info['key'] = key
+            results.append(info)
+    return jsonify(results)
+
+
+@app.route('/api/commodity/<commodity_key>/volatility', methods=['GET'])
+@app.route('/api/commodity/<commodity_key>/volatility/<period>', methods=['GET'])
+def get_volatility(commodity_key, period='1y'):
+    """返回历史波动率序列"""
+    if commodity_key not in SUPPORTED_COMMODITIES:
+        return jsonify({'error': '不支持的商品'}), 400
+
+    symbol = SUPPORTED_COMMODITIES[commodity_key]['symbol']
+    data = get_commodity_data(symbol, period)
+
+    if data is None or data.empty or len(data) < 21:
+        return jsonify({'error': '数据不足'}), 400
+
+    closes = data['Close'].dropna().values
+    log_returns = np.log(closes[1:] / closes[:-1])
+
+    hv_series = []
+    dates = list(data.index.strftime('%Y-%m-%d'))
+
+    for i in range(19, len(log_returns)):
+        window = log_returns[i-19:i+1]
+        mean = np.mean(window)
+        std  = np.std(window, ddof=1)
+        hv   = std * np.sqrt(252) * 100
+        hv_series.append({
+            'date': dates[i+1],
+            'hv': round(float(hv), 4)
+        })
+
+    overall_hv20 = round(float(np.std(log_returns[-20:], ddof=1) * np.sqrt(252) * 100), 4)
+    overall_hv60 = round(float(np.std(log_returns[-min(60,len(log_returns)):], ddof=1) * np.sqrt(252) * 100), 4)
+
+    return jsonify({
+        'commodity': commodity_key,
+        'hv20': overall_hv20,
+        'hv60': overall_hv60,
+        'series': hv_series
+    })
+
+
+@app.route('/api/market/sentiment', methods=['GET'])
+def market_sentiment():
+    """返回简单的综合市场情绪指标"""
+    sentiments = {}
+    for key, value in SUPPORTED_COMMODITIES.items():
+        symbol = value['symbol']
+        data = get_commodity_data(symbol, '3mo')
+        if data is None or data.empty or len(data) < 20:
+            continue
+        closes = data['Close'].dropna().values
+        recent_change = (closes[-1] - closes[-20]) / closes[-20] * 100
+        log_r = np.log(closes[1:] / closes[:-1])
+        gains = log_r[log_r > 0]
+        losses = -log_r[log_r < 0]
+        rs = np.mean(gains[-14:]) / np.mean(losses[-14:]) if len(losses) > 0 else 100
+        rsi = float(100 - 100 / (1 + rs))
+        score = min(100, max(0, 50 + recent_change * 3 + (rsi - 50) * 0.5))
+        sentiments[key] = {
+            'score': round(score, 1),
+            'rsi': round(rsi, 2),
+            'change20d': round(float(recent_change), 2)
+        }
+    return jsonify(sentiments)
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1,590 +1,449 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>期限结构与交易策略分析</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
-    <style>
-        .tabs {
-            display: flex;
-            gap: 10px;
-            padding: 20px 30px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .tab {
-            padding: 12px 24px;
-            background: white;
-            border: 2px solid #dee2e6;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-        }
-        
-        .tab:hover {
-            border-color: #667eea;
-        }
-        
-        .tab.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-color: #667eea;
-        }
-        
-        .tab-content {
-            display: none;
-            padding: 30px;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .structure-badge {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: 600;
-            margin: 10px 0;
-        }
-        
-        .structure-badge.contango {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        .structure-badge.backwardation {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .strategy-card {
-            background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            border-left: 4px solid #667eea;
-        }
-        
-        .strategy-card h4 {
-            color: #212529;
-            margin-bottom: 10px;
-        }
-        
-        .strategy-card p {
-            color: #6c757d;
-            margin-bottom: 8px;
-        }
-        
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-        
-        .metric-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-            text-align: center;
-        }
-        
-        .metric-label {
-            color: #6c757d;
-            font-size: 0.9em;
-            margin-bottom: 8px;
-        }
-        
-        .metric-value {
-            font-size: 1.8em;
-            font-weight: 700;
-            color: #212529;
-        }
-        
-        .metric-value.positive {
-            color: #28a745;
-        }
-        
-        .metric-value.negative {
-            color: #dc3545;
-        }
-        
-        .trades-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: white;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-        }
-        
-        .trades-table th,
-        .trades-table td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .trades-table th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: #495057;
-        }
-        
-        .trades-table tr:hover {
-            background: #f8f9fa;
-        }
-        
-        .buy-badge {
-            background: #d4edda;
-            color: #155724;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-weight: 600;
-        }
-        
-        .sell-badge {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-weight: 600;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>期限结构与交易策略分析 — 外盘商品系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>期限结构与交易策略分析</h1>
-            <p class="subtitle">期货期限结构 · 交易策略回测 · 风险管理</p>
-        </header>
 
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab('term-structure')">期限结构分析</div>
-            <div class="tab" onclick="switchTab('strategy-backtest')">交易策略回测</div>
-            <div class="tab" onclick="window.location.href='/'">返回主页</div>
-        </div>
-
-        <div class="controls">
-            <div class="control-group">
-                <label for="commoditySelect">选择商品：</label>
-                <select id="commoditySelect">
-                    <option value="">请选择商品</option>
-                </select>
-            </div>
-            <div class="control-group" id="periodGroup">
-                <label for="periodSelect">时间周期：</label>
-                <select id="periodSelect">
-                    <option value="1mo">1个月</option>
-                    <option value="3mo">3个月</option>
-                    <option value="6mo">6个月</option>
-                    <option value="1y" selected>1年</option>
-                    <option value="2y">2年</option>
-                    <option value="5y">5年</option>
-                </select>
-            </div>
-            <button id="analyzeBtn" class="btn-primary">开始分析</button>
-        </div>
-
-        <div id="loading" class="loading hidden">
-            <div class="spinner"></div>
-            <p>正在分析中，请稍候...</p>
-        </div>
-
-        <div id="error" class="error hidden"></div>
-
-        <!-- 期限结构分析 -->
-        <div id="term-structure" class="tab-content active">
-            <div id="termResults" class="results hidden">
-                <section class="info-section">
-                    <h2>期限结构信息</h2>
-                    <div id="structureInfo"></div>
-                </section>
-
-                <section class="chart-section">
-                    <h2>期限结构图</h2>
-                    <div id="termStructureChart" class="chart"></div>
-                </section>
-
-                <section class="info-section">
-                    <h2>交易策略建议</h2>
-                    <div id="strategies"></div>
-                </section>
-            </div>
-        </div>
-
-        <!-- 交易策略回测 -->
-        <div id="strategy-backtest" class="tab-content">
-            <div id="backtestResults" class="results hidden">
-                <section class="info-section">
-                    <h2>策略信息</h2>
-                    <div id="strategyInfo"></div>
-                </section>
-
-                <section class="info-section">
-                    <h2>回测指标</h2>
-                    <div id="metricsGrid" class="metrics-grid"></div>
-                </section>
-
-                <section class="chart-section">
-                    <h2>资金曲线</h2>
-                    <div id="capitalChart" class="chart"></div>
-                </section>
-
-                <section class="info-section">
-                    <h2>交易记录</h2>
-                    <div style="overflow-x: auto;">
-                        <table id="tradesTable" class="trades-table">
-                            <thead>
-                                <tr>
-                                    <th>日期</th>
-                                    <th>类型</th>
-                                    <th>价格</th>
-                                    <th>数量</th>
-                                    <th>盈亏</th>
-                                    <th>原因</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tradesBody"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
-        </div>
+<!-- ===== 顶部导航栏 ===== -->
+<nav class="top-nav">
+  <div class="nav-brand">
+    <div class="brand-icon">📈</div>
+    <div>
+      <div class="brand-name">外盘商品实时监控</div>
     </div>
+  </div>
+  <div class="nav-links" style="margin-left:auto;">
+    <a class="nav-link" href="/">市场概览</a>
+    <a class="nav-link active" href="/analysis">期限结构</a>
+    <a class="nav-link active" href="/analysis">策略回测</a>
+  </div>
+  <div class="nav-time">
+    <div class="live-dot"></div>
+    <span id="navTime">实时更新</span>
+  </div>
+</nav>
 
-    <script>
-        const API_BASE = '/api';
-        let currentTab = 'term-structure';
+<!-- ===== 工具栏 ===== -->
+<div class="toolbar">
+  <div class="control-group" style="flex-direction:row;align-items:center;gap:8px;">
+    <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">商品</label>
+    <select class="toolbar-select" id="commoditySelect">
+      <option value="">请选择商品</option>
+    </select>
+  </div>
+  <div class="control-group" id="periodGroup" style="flex-direction:row;align-items:center;gap:8px;">
+    <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">回测周期</label>
+    <select class="toolbar-select" id="periodSelect">
+      <option value="1mo">1个月</option>
+      <option value="3mo">3个月</option>
+      <option value="6mo">6个月</option>
+      <option value="1y" selected>1年</option>
+      <option value="2y">2年</option>
+      <option value="5y">5年</option>
+    </select>
+  </div>
+  <button class="btn-primary" id="analyzeBtn">开始分析</button>
+  <div class="toolbar-right">
+    <a href="/" class="btn-secondary">← 返回市场概览</a>
+  </div>
+</div>
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadCommodities();
-            document.getElementById('analyzeBtn').addEventListener('click', analyze);
-        });
+<!-- ===== 标签页 ===== -->
+<div class="page-tabs">
+  <button class="page-tab active" onclick="switchTab('term-structure',this)">📐 期限结构分析</button>
+  <button class="page-tab" onclick="switchTab('strategy-backtest',this)">📊 交易策略回测</button>
+</div>
 
-        function switchTab(tabId) {
-            currentTab = tabId;
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
-            
-            document.getElementById('periodGroup').style.display = 
-                tabId === 'strategy-backtest' ? 'flex' : 'none';
-        }
+<!-- ===== 加载 & 错误 ===== -->
+<div id="loading" class="loading hidden">
+  <div class="spinner"></div>
+  <p>正在分析中，请稍候...</p>
+</div>
+<div id="error" class="error hidden"></div>
 
-        async function loadCommodities() {
-            try {
-                const response = await fetch(`${API_BASE}/commodities`);
-                const commodities = await response.json();
-                
-                const select = document.getElementById('commoditySelect');
-                commodities.forEach(commodity => {
-                    const option = document.createElement('option');
-                    option.value = commodity.key;
-                    option.textContent = `${commodity.key} (${commodity.name})`;
-                    select.appendChild(option);
-                });
-            } catch (error) {
-                showError('加载商品列表失败');
-                console.error(error);
-            }
-        }
+<div class="main-content">
 
-        async function analyze() {
-            const commodityKey = document.getElementById('commoditySelect').value;
-            const period = document.getElementById('periodSelect').value;
-            
-            if (!commodityKey) {
-                showError('请选择商品');
-                return;
-            }
-            
-            showLoading(true);
-            hideError();
-            
-            try {
-                if (currentTab === 'term-structure') {
-                    await analyzeTermStructure(commodityKey);
-                } else {
-                    await backtestStrategy(commodityKey, period);
-                }
-            } catch (error) {
-                showError('分析失败，请稍后重试');
-                console.error(error);
-            } finally {
-                showLoading(false);
-            }
-        }
+  <!-- ============ 期限结构分析 ============ -->
+  <div id="term-structure" class="tab-content active">
+    <div id="termResults" class="hidden fade-in">
 
-        async function analyzeTermStructure(commodityKey) {
-            const response = await fetch(`${API_BASE}/term-structure/${commodityKey}`);
-            const data = await response.json();
-            
-            if (data.error) {
-                showError(data.error);
-                return;
-            }
-            
-            displayStructureInfo(data);
-            plotTermStructure(data);
-            displayStrategies(data.strategies);
-            
-            document.getElementById('termResults').classList.remove('hidden');
-        }
+      <div class="analysis-layout">
+        <div class="analysis-main">
 
-        function displayStructureInfo(data) {
-            const container = document.getElementById('structureInfo');
-            const structureClass = data.structureType === 'contango' ? 'contango' : 'backwardation';
-            
-            container.innerHTML = `
-                <div class="info-grid">
-                    <div class="info-card">
-                        <div class="info-card-label">商品名称</div>
-                        <div class="info-card-value">${data.name}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">期限结构</div>
-                        <div class="info-card-value">
-                            <span class="structure-badge ${structureClass}">${data.structure}</span>
-                        </div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">近月价格</div>
-                        <div class="info-card-value">${data.termStructure[0].price}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">远月价格</div>
-                        <div class="info-card-value">${data.termStructure[data.termStructure.length-1].price}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">价差</div>
-                        <div class="info-card-value ${data.spread >= 0 ? 'positive' : 'negative'}">
-                            ${data.spread >= 0 ? '+' : ''}${data.spread}
-                        </div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">价差百分比</div>
-                        <div class="info-card-value ${data.spreadPercent >= 0 ? 'positive' : 'negative'}">
-                            ${data.spreadPercent >= 0 ? '+' : ''}${data.spreadPercent}%
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
+          <!-- 结构信息 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📐 期限结构信息</div>
+            </div>
+            <div class="info-grid" id="structureInfo"></div>
+          </div>
 
-        function plotTermStructure(data) {
-            const months = data.termStructure.map(d => d.month);
-            const prices = data.termStructure.map(d => d.price);
-            
-            const trace = {
-                x: months,
-                y: prices,
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: '收盘价',
-                line: { color: '#667eea', width: 3 },
-                marker: { size: 10 }
-            };
-            
-            const layout = {
-                title: `${data.name} - 期限结构`,
-                xaxis: { title: '合约月份' },
-                yaxis: { title: '价格' },
-                hovermode: 'x unified',
-                height: 500,
-                margin: { t: 60, b: 40, l: 60, r: 40 }
-            };
-            
-            Plotly.newPlot('termStructureChart', [trace], layout);
-        }
+          <!-- 期限结构图 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📈 期限结构曲线</div>
+            </div>
+            <div class="card-body" style="padding:8px;">
+              <div class="chart-wrap">
+                <div id="termStructureChart" class="chart"></div>
+              </div>
+            </div>
+          </div>
 
-        function displayStrategies(strategies) {
-            const container = document.getElementById('strategies');
-            container.innerHTML = strategies.map(s => `
-                <div class="strategy-card">
-                    <h4>${s.name}</h4>
-                    <p><strong>策略描述：</strong>${s.description}</p>
-                    <p><strong>风险等级：</strong>${s.risk}</p>
-                    <p><strong>预期收益：</strong>${s.expectedReturn}</p>
-                </div>
-            `).join('');
-        }
+        </div>
 
-        async function backtestStrategy(commodityKey, period) {
-            const response = await fetch(`${API_BASE}/strategy/backtest/${commodityKey}/${period}`);
-            const data = await response.json();
-            
-            if (data.error) {
-                showError(data.error);
-                return;
-            }
-            
-            displayStrategyInfo(data);
-            displayMetrics(data.metrics);
-            displayTrades(data.trades);
-            plotCapitalCurve(data);
-            
-            document.getElementById('backtestResults').classList.remove('hidden');
-        }
+        <div class="analysis-side">
+          <!-- 交易策略建议 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">💡 交易策略建议</div>
+            </div>
+            <div class="card-body" id="strategies"></div>
+          </div>
 
-        function displayStrategyInfo(data) {
-            const container = document.getElementById('strategyInfo');
-            container.innerHTML = `
-                <div class="info-grid">
-                    <div class="info-card">
-                        <div class="info-card-label">策略名称</div>
-                        <div class="info-card-value">${data.strategy.name}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">策略描述</div>
-                        <div class="info-card-value">${data.strategy.description}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">仓位管理</div>
-                        <div class="info-card-value">${data.strategy.positionSize}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">止损比例</div>
-                        <div class="info-card-value">${data.strategy.stopLoss}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">止盈比例</div>
-                        <div class="info-card-value">${data.strategy.takeProfit}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">初始资金</div>
-                        <div class="info-card-value">$${data.initialCapital.toLocaleString()}</div>
-                    </div>
-                    <div class="info-card">
-                        <div class="info-card-label">最终资金</div>
-                        <div class="info-card-value">$${data.finalCapital.toLocaleString()}</div>
-                    </div>
-                </div>
-            `;
-        }
+          <!-- 结构说明 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📖 期限结构说明</div>
+            </div>
+            <div class="card-body">
+              <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+                <p><strong style="color:var(--gold)">升水（Contango）：</strong>远月价格高于近月，通常反映持有成本和储存费用。</p>
+                <br>
+                <p><strong style="color:var(--down-color)">贴水（Backwardation）：</strong>近月价格高于远月，通常反映当前供应紧张或市场预期未来供给改善。</p>
+                <br>
+                <p>期限结构可用于识别<strong style="color:var(--accent-cyan)">跨期套利</strong>机会和<strong style="color:var(--accent-cyan)">展期收益</strong>方向。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        function displayMetrics(metrics) {
-            const container = document.getElementById('metricsGrid');
-            container.innerHTML = `
-                <div class="metric-card">
-                    <div class="metric-label">总交易次数</div>
-                    <div class="metric-value">${metrics.totalTrades}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">盈利次数</div>
-                    <div class="metric-value positive">${metrics.winningTrades}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">亏损次数</div>
-                    <div class="metric-value negative">${metrics.losingTrades}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">胜率</div>
-                    <div class="metric-value ${metrics.winRate >= 50 ? 'positive' : 'negative'}">${metrics.winRate}%</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">赔率</div>
-                    <div class="metric-value">${metrics.oddsRatio}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">平均盈利</div>
-                    <div class="metric-value positive">$${metrics.avgWin}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">平均亏损</div>
-                    <div class="metric-value negative">$${metrics.avgLoss}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">总收益率</div>
-                    <div class="metric-value ${metrics.totalReturn >= 0 ? 'positive' : 'negative'}">${metrics.totalReturn}%</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">最大回撤</div>
-                    <div class="metric-value negative">${metrics.maxDrawdown}%</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">夏普比率</div>
-                    <div class="metric-value ${metrics.sharpeRatio >= 1 ? 'positive' : ''}">${metrics.sharpeRatio}</div>
-                </div>
-            `;
-        }
+    </div>
+  </div>
 
-        function displayTrades(trades) {
-            const tbody = document.getElementById('tradesBody');
-            tbody.innerHTML = trades.map(t => `
-                <tr>
-                    <td>${t.date}</td>
-                    <td><span class="${t.type === 'buy' ? 'buy-badge' : 'sell-badge'}">${t.type === 'buy' ? '买入' : '卖出'}</span></td>
-                    <td>$${t.price}</td>
-                    <td>${t.shares}</td>
-                    <td class="${t.pnl >= 0 ? 'positive' : 'negative'}">${t.pnl !== undefined ? (t.pnl >= 0 ? '+' : '') + '$' + t.pnl : '-'}</td>
-                    <td>${t.reason}</td>
-                </tr>
-            `).join('');
-        }
+  <!-- ============ 交易策略回测 ============ -->
+  <div id="strategy-backtest" class="tab-content">
+    <div id="backtestResults" class="hidden fade-in">
 
-        function plotCapitalCurve(data) {
-            let capital = data.initialCapital;
-            const dates = [data.trades[0]?.date || new Date().toISOString().split('T')[0]];
-            const capitals = [capital];
-            
-            data.trades.forEach(trade => {
-                if (trade.type === 'sell' && trade.pnl !== undefined) {
-                    capital += trade.pnl;
-                    dates.push(trade.date);
-                    capitals.push(capital);
-                }
-            });
-            
-            const trace = {
-                x: dates,
-                y: capitals,
-                type: 'scatter',
-                mode: 'lines',
-                name: '资金曲线',
-                line: { color: '#667eea', width: 2 }
-            };
-            
-            const layout = {
-                title: '资金曲线',
-                xaxis: { title: '日期' },
-                yaxis: { title: '资金 ($)' },
-                hovermode: 'x unified',
-                height: 500,
-                margin: { t: 60, b: 40, l: 60, r: 40 }
-            };
-            
-            Plotly.newPlot('capitalChart', [trace], layout);
-        }
+      <!-- 策略信息 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">⚙️ 策略参数</div>
+        </div>
+        <div class="info-grid" id="strategyInfo"></div>
+      </div>
 
-        function showLoading(show) {
-            const loading = document.getElementById('loading');
-            if (show) {
-                loading.classList.remove('hidden');
-            } else {
-                loading.classList.add('hidden');
-            }
-        }
+      <!-- 回测指标 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📊 回测指标概览</div>
+        </div>
+        <div class="card-body" style="padding:8px;">
+          <div class="metrics-grid" id="metricsGrid"></div>
+        </div>
+      </div>
 
-        function showError(message) {
-            const error = document.getElementById('error');
-            error.textContent = message;
-            error.classList.remove('hidden');
-        }
+      <div class="analysis-layout">
+        <div class="analysis-main">
+          <!-- 资金曲线 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">💰 资金曲线</div>
+            </div>
+            <div class="card-body" style="padding:8px;">
+              <div class="chart-wrap">
+                <div id="capitalChart" class="chart"></div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        function hideError() {
-            const error = document.getElementById('error');
-            error.classList.add('hidden');
-        }
-    </script>
+        <div class="analysis-side">
+          <!-- 盈亏分布 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📦 盈亏分布</div>
+            </div>
+            <div class="card-body" style="padding:8px;">
+              <div id="pnlChart" style="height:220px;"></div>
+            </div>
+          </div>
+
+          <!-- 策略说明 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📝 策略说明</div>
+            </div>
+            <div class="card-body" id="strategyDesc">
+              <p style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+                <strong style="color:var(--gold)">双均线策略：</strong>
+                当短期均线（MA5）上穿长期均线（MA20）时发出买入信号（金叉），
+                反之发出卖出信号（死叉）。结合止损止盈管理风险。
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 交易记录 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📋 交易记录</div>
+          <div id="tradesSummary" style="font-size:12px;color:var(--text-secondary);"></div>
+        </div>
+        <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
+          <table class="trades-table" id="tradesTable">
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>类型</th>
+                <th>价格</th>
+                <th>数量</th>
+                <th>盈亏</th>
+                <th>信号原因</th>
+              </tr>
+            </thead>
+            <tbody id="tradesBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /main-content -->
+
+<script>
+  const API_BASE = '/api';
+  let currentTab = 'term-structure';
+
+  // 更新时间
+  setInterval(() => {
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    const s = `实时更新 ${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const el = document.getElementById('navTime');
+    if (el) el.textContent = s;
+  }, 1000);
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadCommodities();
+    document.getElementById('analyzeBtn').addEventListener('click', analyze);
+    document.getElementById('periodGroup').style.display = 'none';
+  });
+
+  function switchTab(tabId, el) {
+    currentTab = tabId;
+    document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    if (el) el.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+    document.getElementById('periodGroup').style.display =
+      tabId === 'strategy-backtest' ? 'flex' : 'none';
+  }
+
+  async function loadCommodities() {
+    try {
+      const res = await fetch(`${API_BASE}/commodities`);
+      const list = await res.json();
+      const sel = document.getElementById('commoditySelect');
+      list.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.key;
+        opt.textContent = `${c.key} (${c.name})`;
+        sel.appendChild(opt);
+      });
+    } catch(e) { showError('加载商品列表失败'); }
+  }
+
+  async function analyze() {
+    const key = document.getElementById('commoditySelect').value;
+    const period = document.getElementById('periodSelect').value;
+    if (!key) { showError('请选择商品'); return; }
+    showLoading(true); hideError();
+    try {
+      if (currentTab === 'term-structure') await analyzeTermStructure(key);
+      else await backtestStrategy(key, period);
+    } catch(e) {
+      showError('分析失败，请稍后重试');
+      console.error(e);
+    } finally { showLoading(false); }
+  }
+
+  /* -------- 期限结构 -------- */
+  async function analyzeTermStructure(key) {
+    const res = await fetch(`${API_BASE}/term-structure/${key}`);
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    displayStructureInfo(data);
+    plotTermStructure(data);
+    displayStrategies(data.strategies);
+    document.getElementById('termResults').classList.remove('hidden');
+  }
+
+  function displayStructureInfo(data) {
+    const sc = data.structureType === 'contango' ? 'contango' : 'backwardation';
+    document.getElementById('structureInfo').innerHTML = `
+      <div class="info-cell"><div class="info-cell-label">商品名称</div><div class="info-cell-value sm">${data.name}</div></div>
+      <div class="info-cell"><div class="info-cell-label">期限结构</div><div class="info-cell-value sm"><span class="structure-badge ${sc}">${data.structure}</span></div></div>
+      <div class="info-cell"><div class="info-cell-label">近月价格</div><div class="info-cell-value">${data.termStructure[0].price}</div></div>
+      <div class="info-cell"><div class="info-cell-label">远月价格</div><div class="info-cell-value">${data.termStructure[data.termStructure.length-1].price}</div></div>
+      <div class="info-cell"><div class="info-cell-label">价差</div><div class="info-cell-value ${data.spread>=0?'up':'down'}">${data.spread>=0?'+':''}${data.spread}</div></div>
+      <div class="info-cell"><div class="info-cell-label">价差幅度</div><div class="info-cell-value ${data.spreadPercent>=0?'up':'down'}">${data.spreadPercent>=0?'+':''}${data.spreadPercent}%</div></div>
+    `;
+  }
+
+  function plotTermStructure(data) {
+    const months = data.termStructure.map(d => d.month);
+    const prices = data.termStructure.map(d => d.price);
+    const isUp = data.structureType === 'contango';
+    Plotly.newPlot('termStructureChart', [{
+      x: months, y: prices, type: 'scatter', mode: 'lines+markers',
+      line: { color: isUp ? '#e84855' : '#00c875', width: 3 },
+      marker: { size: 9, color: isUp ? '#e84855' : '#00c875' },
+      fill: 'tozeroy', fillcolor: isUp ? 'rgba(232,72,85,0.08)' : 'rgba(0,200,117,0.08)'
+    }], {
+      paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+      font: { color: '#8b95a8', size: 12 },
+      xaxis: { title: '合约月份', gridcolor: '#2a3548', linecolor: '#2a3548' },
+      yaxis: { title: '价格', gridcolor: '#2a3548', linecolor: '#2a3548' },
+      margin: { t:20, b:40, l:60, r:20 }, height: 380,
+      hovermode: 'x unified'
+    }, { responsive: true });
+  }
+
+  function displayStrategies(strategies) {
+    document.getElementById('strategies').innerHTML = strategies.map(s => `
+      <div class="strategy-card">
+        <h4>${s.name}</h4>
+        <p><strong>描述：</strong>${s.description}</p>
+        <p><strong>风险：</strong>${s.risk}</p>
+        <p><strong>预期收益：</strong>${s.expectedReturn}</p>
+      </div>
+    `).join('');
+  }
+
+  /* -------- 策略回测 -------- */
+  async function backtestStrategy(key, period) {
+    const res = await fetch(`${API_BASE}/strategy/backtest/${key}/${period}`);
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    displayStrategyInfo(data);
+    displayMetrics(data.metrics);
+    displayTrades(data.trades);
+    plotCapitalCurve(data);
+    plotPnlDistribution(data.trades);
+    document.getElementById('backtestResults').classList.remove('hidden');
+  }
+
+  function displayStrategyInfo(data) {
+    document.getElementById('strategyInfo').innerHTML = `
+      <div class="info-cell"><div class="info-cell-label">策略名称</div><div class="info-cell-value sm">${data.strategy.name}</div></div>
+      <div class="info-cell"><div class="info-cell-label">仓位管理</div><div class="info-cell-value sm">${data.strategy.positionSize}</div></div>
+      <div class="info-cell"><div class="info-cell-label">止损比例</div><div class="info-cell-value sm">${data.strategy.stopLoss}</div></div>
+      <div class="info-cell"><div class="info-cell-label">止盈比例</div><div class="info-cell-value sm">${data.strategy.takeProfit}</div></div>
+      <div class="info-cell"><div class="info-cell-label">初始资金</div><div class="info-cell-value sm">$${data.initialCapital.toLocaleString()}</div></div>
+      <div class="info-cell"><div class="info-cell-label">最终资金</div>
+        <div class="info-cell-value sm ${data.finalCapital >= data.initialCapital ? 'up' : 'down'}">$${data.finalCapital.toLocaleString()}</div>
+      </div>
+    `;
+  }
+
+  function displayMetrics(m) {
+    const items = [
+      { label:'总交易次数', value: m.totalTrades, cls: '' },
+      { label:'盈利次数', value: m.winningTrades, cls: 'positive' },
+      { label:'亏损次数', value: m.losingTrades, cls: 'negative' },
+      { label:'胜率', value: m.winRate + '%', cls: m.winRate >= 50 ? 'positive' : 'negative' },
+      { label:'赔率', value: m.oddsRatio, cls: '' },
+      { label:'平均盈利', value: '$' + m.avgWin, cls: 'positive' },
+      { label:'平均亏损', value: '$' + m.avgLoss, cls: 'negative' },
+      { label:'总收益率', value: m.totalReturn + '%', cls: m.totalReturn >= 0 ? 'positive' : 'negative' },
+      { label:'最大回撤', value: m.maxDrawdown + '%', cls: 'negative' },
+      { label:'夏普比率', value: m.sharpeRatio, cls: m.sharpeRatio >= 1 ? 'positive' : '' },
+    ];
+    document.getElementById('metricsGrid').innerHTML = items.map(i => `
+      <div class="metric-card">
+        <div class="metric-label">${i.label}</div>
+        <div class="metric-value ${i.cls}">${i.value}</div>
+      </div>
+    `).join('');
+  }
+
+  function displayTrades(trades) {
+    const sells = trades.filter(t => t.type === 'sell');
+    document.getElementById('tradesSummary').textContent = `共 ${trades.length} 笔记录，${sells.length} 笔成交`;
+    document.getElementById('tradesBody').innerHTML = trades.map(t => `
+      <tr>
+        <td>${t.date}</td>
+        <td><span class="${t.type==='buy'?'buy-badge':'sell-badge'}">${t.type==='buy'?'买入':'卖出'}</span></td>
+        <td>$${t.price}</td>
+        <td>${t.shares}</td>
+        <td class="${t.pnl !== undefined ? (t.pnl >= 0 ? 'positive' : 'negative') : ''}">${t.pnl !== undefined ? (t.pnl>=0?'+':'')+' $'+t.pnl : '—'}</td>
+        <td style="color:var(--text-secondary)">${t.reason}</td>
+      </tr>
+    `).join('');
+  }
+
+  function plotCapitalCurve(data) {
+    let capital = data.initialCapital;
+    const dates = [data.trades[0]?.date || ''];
+    const caps = [capital];
+    data.trades.forEach(t => {
+      if (t.type === 'sell' && t.pnl !== undefined) {
+        capital += t.pnl;
+        dates.push(t.date);
+        caps.push(capital);
+      }
+    });
+    Plotly.newPlot('capitalChart', [{
+      x: dates, y: caps, type: 'scatter', mode: 'lines',
+      fill: 'tozeroy', fillcolor: 'rgba(30,144,255,0.08)',
+      line: { color: '#1e90ff', width: 2 }
+    }], {
+      paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+      font: { color: '#8b95a8', size: 12 },
+      xaxis: { gridcolor: '#2a3548', linecolor: '#2a3548' },
+      yaxis: { title: '资金 ($)', gridcolor: '#2a3548', linecolor: '#2a3548' },
+      margin: { t:20, b:40, l:70, r:20 }, height: 380,
+      hovermode: 'x unified'
+    }, { responsive: true });
+  }
+
+  function plotPnlDistribution(trades) {
+    const pnls = trades.filter(t => t.type === 'sell' && t.pnl !== undefined).map(t => t.pnl);
+    if (!pnls.length) return;
+    Plotly.newPlot('pnlChart', [{
+      x: pnls, type: 'histogram', nbinsx: 15,
+      marker: { color: pnls.map(p => p >= 0 ? 'rgba(232,72,85,0.7)' : 'rgba(0,200,117,0.7)') }
+    }], {
+      paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+      font: { color: '#8b95a8', size: 11 },
+      xaxis: { title: '盈亏 ($)', gridcolor: '#2a3548' },
+      yaxis: { title: '次数', gridcolor: '#2a3548' },
+      bargap: 0.05,
+      margin: { t:10, b:40, l:50, r:10 }, height: 200
+    }, { responsive: true });
+  }
+
+  /* -------- 工具函数 -------- */
+  function showLoading(show) {
+    document.getElementById('loading').classList.toggle('hidden', !show);
+  }
+  function showError(msg) {
+    const e = document.getElementById('error');
+    e.textContent = msg;
+    e.classList.remove('hidden');
+  }
+  function hideError() {
+    document.getElementById('error').classList.add('hidden');
+  }
+</script>
 </body>
 </html>

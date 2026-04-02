@@ -1,0 +1,6 @@
+GC=F (黄金期货(COMEX)): 252 rows, source=合成数据(GBM模型), latest=2316.523
+SI=F (白银期货(COMEX)): 252 rows, source=合成数据(GBM模型), latest=16.889
+CL=F (WTI原油期货): 252 rows, source=合成数据(GBM模型), latest=64.109
+HG=F (铜期货(COMEX)): 252 rows, source=合成数据(GBM模型), latest=3.556
+GLD (黄金ETF(SPDR)): 252 rows, source=合成数据(GBM模型), latest=209.925
+SLV (白银ETF(iShares)): 252 rows, source=合成数据(GBM模型), latest=21.408

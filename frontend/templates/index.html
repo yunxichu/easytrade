@@ -1,71 +1,317 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>外盘商品走势分析与预测系统</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>外盘商品走势分析与预测系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>外盘商品走势分析与预测系统</h1>
-            <p class="subtitle">实时数据 · 智能分析 · 价格预测</p>
-        </header>
 
-        <div class="controls">
-            <div class="control-group">
-                <label for="commoditySelect">选择商品：</label>
-                <select id="commoditySelect">
-                    <option value="">请选择商品</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label for="periodSelect">时间周期：</label>
-                <select id="periodSelect">
-                    <option value="1mo">1个月</option>
-                    <option value="3mo">3个月</option>
-                    <option value="6mo">6个月</option>
-                    <option value="1y" selected>1年</option>
-                    <option value="2y">2年</option>
-                    <option value="5y">5年</option>
-                </select>
-            </div>
-            <button id="analyzeBtn" class="btn-primary">开始分析</button>
-            <a href="/analysis" class="btn-primary" style="text-decoration: none; display: inline-block;">期限结构与策略分析</a>
+<!-- ===== 顶部导航栏 ===== -->
+<nav class="top-nav">
+  <div class="nav-brand">
+    <div class="brand-icon">📈</div>
+    <div>
+      <div class="brand-name">外盘商品实时监控</div>
+    </div>
+  </div>
+  <div style="font-size:12px;color:var(--text-secondary);margin-left:16px;">
+    覆盖黄金 · 原油 · 白银 · 铜 · 天然气 · 专业走势分析与价格预测
+  </div>
+  <div class="nav-links" style="margin-left:auto;">
+    <a class="nav-link active" href="/">市场概览</a>
+    <a class="nav-link" href="/analysis">期限结构</a>
+    <a class="nav-link" href="/analysis">策略回测</a>
+  </div>
+  <div class="nav-time">
+    <div class="live-dot"></div>
+    <span id="navTime">实时更新</span>
+  </div>
+</nav>
+
+<!-- ===== 统计摘要栏 ===== -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-value up" id="statRising">—</div>
+    <div class="stat-label">上涨商品</div>
+    <div class="stat-sub">全市场涨幅</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value gold" id="statGoldPrice">—</div>
+    <div class="stat-label">COMEX黄金</div>
+    <div class="stat-sub" id="statGoldChange">实时价格</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value blue" id="statOilPrice">—</div>
+    <div class="stat-label">WTI原油</div>
+    <div class="stat-sub" id="statOilChange">实时价格</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value white" id="statSilverPrice">—</div>
+    <div class="stat-label">COMEX白银</div>
+    <div class="stat-sub" id="statSilverChange">实时价格</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value white" id="statCopperPrice">—</div>
+    <div class="stat-label">COMEX铜</div>
+    <div class="stat-sub" id="statCopperChange">实时价格</div>
+  </div>
+</div>
+
+<!-- ===== 工具栏 ===== -->
+<div class="toolbar">
+  <div class="toolbar-tabs">
+    <button class="tab-btn active" onclick="setView('overview')">全部商品</button>
+    <button class="tab-btn" onclick="setView('analysis')">走势分析</button>
+    <button class="tab-btn" onclick="setView('predict')">价格预测</button>
+  </div>
+  <div style="width:1px;height:24px;background:var(--border-color);margin:0 4px;"></div>
+  <div class="control-group" style="flex-direction:row;align-items:center;gap:8px;">
+    <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">商品</label>
+    <select class="toolbar-select" id="commoditySelect">
+      <option value="">请选择商品</option>
+    </select>
+  </div>
+  <div class="control-group" style="flex-direction:row;align-items:center;gap:8px;">
+    <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">周期</label>
+    <select class="toolbar-select" id="periodSelect">
+      <option value="1mo">1个月</option>
+      <option value="3mo">3个月</option>
+      <option value="6mo">6个月</option>
+      <option value="1y" selected>1年</option>
+      <option value="2y">2年</option>
+      <option value="5y">5年</option>
+    </select>
+  </div>
+  <button class="btn-primary" id="analyzeBtn">开始分析</button>
+  <div class="toolbar-right">
+    <a href="/analysis" class="btn-secondary">📊 期限结构与策略分析</a>
+    <button class="btn-secondary" id="refreshAll">⟳ 刷新全市场</button>
+  </div>
+</div>
+
+<!-- ===== 加载 & 错误 ===== -->
+<div id="loading" class="loading hidden">
+  <div class="spinner"></div>
+  <p>正在加载数据，请稍候...</p>
+</div>
+<div id="error" class="error hidden"></div>
+
+<!-- ===== 主体内容 ===== -->
+<div class="main-content">
+
+  <!-- 视图1：全市场概览 -->
+  <div id="view-overview" class="fade-in">
+
+    <!-- TOP10 涨/跌排行 -->
+    <div class="top10-wrapper" id="top10Wrapper">
+      <!-- 买入/涨幅排行 -->
+      <div class="top10-card">
+        <div class="top10-header">
+          <div class="top10-title">
+            <span class="dot dot-red"></span>
+            涨幅前5 · 主力净流入 · 排名前列
+          </div>
+          <span class="badge-top10">TOP 5</span>
         </div>
+        <table class="top10-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>商品</th>
+              <th>最新价</th>
+              <th>涨跌幅</th>
+              <th>换手率</th>
+              <th>净流入</th>
+            </tr>
+          </thead>
+          <tbody id="topRisingBody"></tbody>
+        </table>
+      </div>
 
-        <div id="loading" class="loading hidden">
-            <div class="spinner"></div>
-            <p>正在加载数据，请稍候...</p>
+      <!-- 跌幅排行 -->
+      <div class="top10-card">
+        <div class="top10-header">
+          <div class="top10-title">
+            <span class="dot dot-green"></span>
+            跌幅前5 · 主力净流出 · 排名前列
+          </div>
+          <span class="badge-top10 green">TOP 5</span>
         </div>
-
-        <div id="error" class="error hidden"></div>
-
-        <div id="results" class="results hidden">
-            <section class="info-section">
-            <h2>商品信息</h2>
-            <div id="commodityInfo" class="info-grid"></div>
-            </section>
-
-            <section class="chart-section">
-                <h2>K线图</h2>
-                <div id="candlestickChart" class="chart"></div>
-            </section>
-
-            <section class="chart-section">
-                <h2>价格走势与均线</h2>
-                <div id="priceChart" class="chart"></div>
-            </section>
-
-            <section class="chart-section">
-                <h2>价格预测（未来30天）</h2>
-                <div id="predictionChart" class="chart"></div>
-            </section>
-        </div>
+        <table class="top10-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>商品</th>
+              <th>最新价</th>
+              <th>涨跌幅</th>
+              <th>换手率</th>
+              <th>净流出</th>
+            </tr>
+          </thead>
+          <tbody id="topFallingBody"></tbody>
+        </table>
+      </div>
     </div>
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <!-- 全部商品 综合数据表 -->
+    <div class="market-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span class="icon">▦</span>
+          全部外盘商品 — 实时综合数据
+        </div>
+        <div class="panel-actions">
+          <button class="btn-secondary" id="sortByChange">按涨跌排序</button>
+          <button class="btn-secondary" id="sortByVolume">按成交量排序</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="market-table" id="marketTable">
+          <thead>
+            <tr>
+              <th>商品名称</th>
+              <th>市场</th>
+              <th>最新价</th>
+              <th>涨跌幅 ↕</th>
+              <th>走势</th>
+              <th>换手率</th>
+              <th>成交量</th>
+              <th>净流入</th>
+              <th>流入占比</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="marketTableBody">
+            <tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:40px;">点击「刷新全市场」加载数据</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 视图2：走势分析 & 视图3：价格预测（共用，通过tab切换） -->
+  <div id="view-analysis" class="hidden fade-in">
+    <div id="results" class="results hidden">
+      <div class="analysis-layout">
+        <!-- 左侧主图区 -->
+        <div class="analysis-main">
+
+          <!-- 商品信息 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📋 商品信息</div>
+              <span id="analysisCommodityName" style="font-size:13px;color:var(--text-primary);font-weight:600;"></span>
+            </div>
+            <div class="info-grid" id="commodityInfo"></div>
+          </div>
+
+          <!-- K线图 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🕯 K线图</div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn-secondary" id="chartTypeKline" onclick="setChartType('kline')">K线</button>
+                <button class="btn-secondary" id="chartTypeLine" onclick="setChartType('line')">折线</button>
+              </div>
+            </div>
+            <div class="card-body" style="padding:8px;">
+              <div class="chart-wrap">
+                <div id="candlestickChart" class="chart"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 均线图 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📉 价格走势与均线</div>
+              <div class="ma-legend">
+                <div class="ma-item"><div class="ma-dot" style="background:#1e90ff"></div><span style="color:var(--text-secondary);font-size:11px;">收盘价</span></div>
+                <div class="ma-item"><div class="ma-dot" style="background:#f5c842"></div><span style="color:var(--text-secondary);font-size:11px;">MA20</span></div>
+                <div class="ma-item"><div class="ma-dot" style="background:#e84855"></div><span style="color:var(--text-secondary);font-size:11px;">MA60</span></div>
+              </div>
+            </div>
+            <div class="card-body" style="padding:8px;">
+              <div class="chart-wrap">
+                <div id="priceChart" class="chart"></div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /analysis-main -->
+
+        <!-- 右侧辅助面板 -->
+        <div class="analysis-side">
+
+          <!-- 价格预测 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🔮 价格预测（未来30天）</div>
+            </div>
+            <div class="card-body" style="padding:8px;">
+              <div class="chart-wrap" style="min-height:280px;">
+                <div id="predictionChart" class="chart" style="min-height:260px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 波动率面板 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">⚡ 波动率分析</div>
+            </div>
+            <div class="card-body">
+              <div class="vol-grid" id="volGrid">
+                <div class="vol-item"><div class="vol-value" id="volHV20" style="color:var(--accent-cyan)">—</div><div class="vol-label">20日历史波动率</div></div>
+                <div class="vol-item"><div class="vol-value" id="volHV60" style="color:var(--gold)">—</div><div class="vol-label">60日历史波动率</div></div>
+                <div class="vol-item"><div class="vol-value" id="volMax" style="color:var(--up-color)">—</div><div class="vol-label">区间最高波动</div></div>
+                <div class="vol-item"><div class="vol-value" id="volMin" style="color:var(--down-color)">—</div><div class="vol-label">区间最低波动</div></div>
+              </div>
+              <div id="volChart" style="height:160px;margin-top:8px;"></div>
+            </div>
+          </div>
+
+          <!-- 市场情绪 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🧭 市场情绪</div>
+            </div>
+            <div class="card-body">
+              <div class="sentiment-bar-wrap">
+                <div class="sentiment-label">
+                  <span style="color:var(--down-color)">极度恐慌</span>
+                  <span id="sentimentScore" style="color:var(--gold);font-weight:700;">—</span>
+                  <span style="color:var(--up-color)">极度贪婪</span>
+                </div>
+                <div class="sentiment-bar">
+                  <div class="sentiment-fill" id="sentimentFill" style="width:50%"></div>
+                </div>
+                <div id="sentimentLabel" style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:8px;">—</div>
+              </div>
+              <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="sentimentDetails"></div>
+            </div>
+          </div>
+
+          <!-- 相关性矩阵 -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🔗 品种相关性</div>
+            </div>
+            <div class="card-body" style="padding:8px;">
+              <div id="corrMatrix"></div>
+            </div>
+          </div>
+
+        </div><!-- /analysis-side -->
+      </div>
+    </div>
+  </div><!-- /view-analysis -->
+
+</div><!-- /main-content -->
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
