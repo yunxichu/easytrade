@@ -13,6 +13,18 @@ app = Flask(__name__,
             static_folder='../frontend/static')
 CORS(app)
 
+# 注册量化全流程 Blueprint
+from quant_api import quant_bp
+app.register_blueprint(quant_bp)
+
+# 注册股票市场信息 Blueprint（作业2）
+from stock_api import stock_bp
+app.register_blueprint(stock_bp)
+
+# 注册截面多空交易系统 Blueprint（Project）
+from cross_section_api import cs_bp
+app.register_blueprint(cs_bp)
+
 SUPPORTED_COMMODITIES = {
     '黄金': {'symbol': 'COMEX黄金', 'name': 'COMEX黄金'},
     '原油': {'symbol': 'WTI原油', 'name': 'WTI原油'},
@@ -204,6 +216,21 @@ def index():
 @app.route('/analysis')
 def analysis():
     return render_template('analysis.html')
+
+
+@app.route('/quant')
+def quant():
+    return render_template('quant.html')
+
+
+@app.route('/stock')
+def stock():
+    return render_template('stock.html')
+
+
+@app.route('/cross-section')
+def cross_section():
+    return render_template('cross_section.html')
 
 
 @app.route('/api/commodities', methods=['GET'])

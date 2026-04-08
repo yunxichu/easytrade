@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量化全流程 | 外盘商品走势分析与预测系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">📊</span>
+            <span class="brand-text">外盘商品分析系统</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="nav-link">主观分析</a>
+            <a href="/quant" class="nav-link active">量化流程</a>
+        </div>
+    </nav>
+
+    <div class="quant-container">
+        <!-- 左侧：流程导航 -->
+        <aside class="quant-sidebar">
+            <div class="quant-title">量化全流程</div>
+            <div class="step-list">
+                <div class="step-item active" data-step="data">
+                    <div class="step-num">1</div>
+                    <div class="step-info">
+                        <div class="step-name">数据接入</div>
+                        <div class="step-desc">Data Ingestion</div>
+                    </div>
+                </div>
+                <div class="step-item" data-step="factor">
+                    <div class="step-num">2</div>
+                    <div class="step-info">
+                        <div class="step-name">因子计算</div>
+                        <div class="step-desc">Alpha Factors</div>
+                    </div>
+                </div>
+                <div class="step-item" data-step="model">
+                    <div class="step-num">3</div>
+                    <div class="step-info">
+                        <div class="step-name">模型训练</div>
+                        <div class="step-desc">Model Training</div>
+                    </div>
+                </div>
+                <div class="step-item" data-step="optimize">
+                    <div class="step-num">4</div>
+                    <div class="step-info">
+                        <div class="step-name">组合优化</div>
+                        <div class="step-desc">Portfolio Optimization</div>
+                    </div>
+                </div>
+                <div class="step-item" data-step="signal">
+                    <div class="step-num">5</div>
+                    <div class="step-info">
+                        <div class="step-name">信号输出</div>
+                        <div class="step-desc">Signal Generation</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 右侧：主内容区 -->
+        <main class="quant-main">
+            <!-- Step 1: 数据接入 -->
+            <section id="step-data" class="quant-section active">
+                <div class="section-header">
+                    <h2>📥 数据接入</h2>
+                    <p>配置数据源、时间范围与标的池</p>
+                </div>
+                
+                <div class="quant-card">
+                    <div class="card-title">数据源配置</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>数据源</label>
+                            <select id="data-source" class="quant-select">
+                                <option value="yahoo">Yahoo Finance</option>
+                                <option value="akshare">AKShare</option>
+                                <option value="tushare">Tushare</option>
+                                <option value="custom">自定义数据源</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>数据类型</label>
+                            <select id="data-type" class="quant-select">
+                                <option value="ohlcv">OHLCV 行情</option>
+                                <option value="tick">Tick 数据</option>
+                                <option value="fundamental">基本面数据</option>
+                                <option value="macro">宏观数据</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>开始日期</label>
+                            <input type="date" id="start-date" class="quant-input" value="2023-01-01">
+                        </div>
+                        <div class="form-group">
+                            <label>结束日期</label>
+                            <input type="date" id="end-date" class="quant-input" value="2026-04-02">
+                        </div>
+                        <div class="form-group">
+                            <label>频率</label>
+                            <select id="data-freq" class="quant-select">
+                                <option value="1d">日线</option>
+                                <option value="1h">小时线</option>
+                                <option value="15m">15分钟</option>
+                                <option value="1m">分钟线</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">标的池配置</div>
+                    <div class="form-group">
+                        <label>标的代码（逗号分隔）</label>
+                        <textarea id="symbols-input" class="quant-textarea" rows="3" placeholder="例如: GC=F, SI=F, CL=F, HG=F">GC=F, SI=F, CL=F, HG=F, NG=F</textarea>
+                    </div>
+                    <div class="preset-pools">
+                        <span class="preset-label">快速选择:</span>
+                        <button class="preset-btn" onclick="setSymbols('GC=F, SI=F, CL=F, HG=F, NG=F')">贵金属+能源</button>
+                        <button class="preset-btn" onclick="setSymbols('ZW=F, ZC=F, ZS=F, CT=F, KC=F')">农产品</button>
+                        <button class="preset-btn" onclick="setSymbols('GLD, SLV, USO, UNG, PPLT')">商品ETF</button>
+                        <button class="preset-btn" onclick="setSymbols('XOM, CVX, NEM, GOLD, FCX')">矿业股</button>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">数据预览</div>
+                    <div id="data-preview-area">
+                        <div class="empty-state">
+                            <div class="empty-icon">📊</div>
+                            <p>点击「获取数据」加载数据预览</p>
+                        </div>
+                    </div>
+                    <div class="action-bar">
+                        <button class="quant-btn secondary" onclick="previewData()">预览数据</button>
+                        <button class="quant-btn primary" onclick="fetchData()">获取数据</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 2: 因子计算 -->
+            <section id="step-factor" class="quant-section">
+                <div class="section-header">
+                    <h2>🔬 因子计算</h2>
+                    <p>配置 Alpha 因子库，计算因子暴露</p>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">因子库</div>
+                    <div class="factor-categories">
+                        <div class="factor-cat">
+                            <div class="cat-header">
+                                <input type="checkbox" id="cat-momentum" checked>
+                                <label for="cat-momentum">动量因子 Momentum</label>
+                            </div>
+                            <div class="factor-list">
+                                <label class="factor-item"><input type="checkbox" checked> MOM_20 (20日动量)</label>
+                                <label class="factor-item"><input type="checkbox" checked> MOM_60 (60日动量)</label>
+                                <label class="factor-item"><input type="checkbox"> MOM_120 (120日动量)</label>
+                                <label class="factor-item"><input type="checkbox"> RSI_14 (RSI指标)</label>
+                            </div>
+                        </div>
+                        <div class="factor-cat">
+                            <div class="cat-header">
+                                <input type="checkbox" id="cat-volatility" checked>
+                                <label for="cat-volatility">波动率因子 Volatility</label>
+                            </div>
+                            <div class="factor-list">
+                                <label class="factor-item"><input type="checkbox" checked> VOL_20 (20日波动率)</label>
+                                <label class="factor-item"><input type="checkbox" checked> ATR_14 (ATR指标)</label>
+                                <label class="factor-item"><input type="checkbox"> BOLL_WIDTH (布林带宽度)</label>
+                            </div>
+                        </div>
+                        <div class="factor-cat">
+                            <div class="cat-header">
+                                <input type="checkbox" id="cat-value">
+                                <label for="cat-value">价值因子 Value</label>
+                            </div>
+                            <div class="factor-list">
+                                <label class="factor-item"><input type="checkbox"> PB (市净率)</label>
+                                <label class="factor-item"><input type="checkbox"> PE (市盈率)</label>
+                            </div>
+                        </div>
+                        <div class="factor-cat">
+                            <div class="cat-header">
+                                <input type="checkbox" id="cat-macro">
+                                <label for="cat-macro">宏观因子 Macro</label>
+                            </div>
+                            <div class="factor-list">
+                                <label class="factor-item"><input type="checkbox"> DXY (美元指数)</label>
+                                <label class="factor-item"><input type="checkbox"> VIX (波动率指数)</label>
+                                <label class="factor-item"><input type="checkbox"> US10Y (美债10年)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">因子处理</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>中性化处理</label>
+                            <select class="quant-select">
+                                <option value="none">无</option>
+                                <option value="market">市值中性化</option>
+                                <option value="industry">行业中性化</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>标准化方法</label>
+                            <select class="quant-select">
+                                <option value="zscore">Z-Score</option>
+                                <option value="rank">Rank</option>
+                                <option value="mad">MAD</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>缺失值处理</label>
+                            <select class="quant-select">
+                                <option value="ffill">前向填充</option>
+                                <option value="mean">均值填充</option>
+                                <option value="drop">删除</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">因子IC分析</div>
+                    <div id="factor-ic-chart" style="height: 300px;"></div>
+                </div>
+
+                <div class="action-bar">
+                    <button class="quant-btn secondary" onclick="goToStep('data')">上一步</button>
+                    <button class="quant-btn primary" onclick="computeFactors()">计算因子</button>
+                    <button class="quant-btn primary" onclick="goToStep('model')">下一步</button>
+                </div>
+            </section>
+
+            <!-- Step 3: 模型训练 -->
+            <section id="step-model" class="quant-section">
+                <div class="section-header">
+                    <h2>🤖 模型训练</h2>
+                    <p>选择模型架构，训练预测模型</p>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">模型选择</div>
+                    <div class="model-grid">
+                        <div class="model-card selected" data-model="xgboost">
+                            <div class="model-icon">🌲</div>
+                            <div class="model-name">XGBoost</div>
+                            <div class="model-desc">梯度提升树，适合结构化数据</div>
+                        </div>
+                        <div class="model-card" data-model="lightgbm">
+                            <div class="model-icon">🚀</div>
+                            <div class="model-name">LightGBM</div>
+                            <div class="model-desc">微软出品，训练速度快</div>
+                        </div>
+                        <div class="model-card" data-model="lstm">
+                            <div class="model-icon">🧠</div>
+                            <div class="model-name">LSTM</div>
+                            <div class="model-desc">长短期记忆网络，捕捉时序特征</div>
+                        </div>
+                        <div class="model-card" data-model="transformer">
+                            <div class="model-icon">⚡</div>
+                            <div class="model-name">Transformer</div>
+                            <div class="model-desc">注意力机制，处理长序列</div>
+                        </div>
+                        <div class="model-card" data-model="linear">
+                            <div class="model-icon">📈</div>
+                            <div class="model-name">线性回归</div>
+                            <div class="model-desc">简单可解释，基准模型</div>
+                        </div>
+                        <div class="model-card" data-model="custom">
+                            <div class="model-icon">🔧</div>
+                            <div class="model-name">自定义模型</div>
+                            <div class="model-desc">上传自定义模型文件</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">模型参数</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>预测目标</label>
+                            <select class="quant-select">
+                                <option value="return_1d">次日收益率</option>
+                                <option value="return_5d">5日收益率</option>
+                                <option value="return_20d">20日收益率</option>
+                                <option value="direction">涨跌方向</option>
+                                <option value="volatility">波动率</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>训练/测试划分</label>
+                            <select class="quant-select">
+                                <option value="0.8">80% / 20%</option>
+                                <option value="0.7">70% / 30%</option>
+                                <option value="timeseries">时间序列划分</option>
+                                <option value="walkforward">滚动向前验证</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>学习率</label>
+                            <input type="number" class="quant-input" value="0.01" step="0.001">
+                        </div>
+                        <div class="form-group">
+                            <label>最大深度</label>
+                            <input type="number" class="quant-input" value="6" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>迭代次数</label>
+                            <input type="number" class="quant-input" value="100" step="10">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">模型性能</div>
+                    <div class="metrics-row">
+                        <div class="metric-box">
+                            <div class="metric-value">--</div>
+                            <div class="metric-label">IC均值</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value">--</div>
+                            <div class="metric-label">ICIR</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value">--</div>
+                            <div class="metric-label">Rank IC</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value">--</div>
+                            <div class="metric-label">年化收益</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value">--</div>
+                            <div class="metric-label">最大回撤</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value">--</div>
+                            <div class="metric-label">夏普比率</div>
+                        </div>
+                    </div>
+                    <div id="model-performance-chart" style="height: 250px; margin-top: 20px;"></div>
+                </div>
+
+                <div class="action-bar">
+                    <button class="quant-btn secondary" onclick="goToStep('factor')">上一步</button>
+                    <button class="quant-btn primary" onclick="trainModel()">训练模型</button>
+                    <button class="quant-btn primary" onclick="goToStep('optimize')">下一步</button>
+                </div>
+            </section>
+
+            <!-- Step 4: 组合优化 -->
+            <section id="step-optimize" class="quant-section">
+                <div class="section-header">
+                    <h2>⚖️ 组合优化</h2>
+                    <p>配置优化目标与约束条件</p>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">优化目标</div>
+                    <div class="objective-options">
+                        <label class="radio-option">
+                            <input type="radio" name="objective" value="sharpe" checked>
+                            <span class="radio-label">最大化夏普比率</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="objective" value="return">
+                            <span class="radio-label">最大化收益</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="objective" value="risk">
+                            <span class="radio-label">最小化风险</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="objective" value="utility">
+                            <span class="radio-label">均值-方差效用</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">约束条件</div>
+                    <div class="constraint-list">
+                        <div class="constraint-item">
+                            <span class="constraint-name">单标的权重上限</span>
+                            <input type="range" class="constraint-slider" min="5" max="50" value="20">
+                            <span class="constraint-value">20%</span>
+                        </div>
+                        <div class="constraint-item">
+                            <span class="constraint-name">单标的权重下限</span>
+                            <input type="range" class="constraint-slider" min="0" max="10" value="0">
+                            <span class="constraint-value">0%</span>
+                        </div>
+                        <div class="constraint-item">
+                            <span class="constraint-name">总仓位上限</span>
+                            <input type="range" class="constraint-slider" min="50" max="150" value="100">
+                            <span class="constraint-value">100%</span>
+                        </div>
+                        <div class="constraint-item">
+                            <span class="constraint-name">行业偏离限制</span>
+                            <input type="range" class="constraint-slider" min="0" max="30" value="10">
+                            <span class="constraint-value">±10%</span>
+                        </div>
+                        <div class="constraint-item">
+                            <span class="constraint-name">换手率限制</span>
+                            <input type="range" class="constraint-slider" min="10" max="100" value="50">
+                            <span class="constraint-value">50%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">风险模型</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>风险模型类型</label>
+                            <select class="quant-select">
+                                <option value="sample">样本协方差</option>
+                                <option value="factor">多因子风险模型</option>
+                                <option value="shrinkage">Ledoit-Wolf收缩</option>
+                                <option value="barra">Barra风格模型</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>置信水平 (VaR)</label>
+                            <select class="quant-select">
+                                <option value="0.95">95%</option>
+                                <option value="0.99">99%</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">有效前沿</div>
+                    <div id="efficient-frontier-chart" style="height: 300px;"></div>
+                </div>
+
+                <div class="action-bar">
+                    <button class="quant-btn secondary" onclick="goToStep('model')">上一步</button>
+                    <button class="quant-btn primary" onclick="runOptimization()">运行优化</button>
+                    <button class="quant-btn primary" onclick="goToStep('signal')">下一步</button>
+                </div>
+            </section>
+
+            <!-- Step 5: 信号输出 -->
+            <section id="step-signal" class="quant-section">
+                <div class="section-header">
+                    <h2>📤 信号输出</h2>
+                    <p>生成交易信号与执行方案</p>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">当前持仓建议</div>
+                    <div class="position-table-wrapper">
+                        <table class="position-table">
+                            <thead>
+                                <tr>
+                                    <th>标的</th>
+                                    <th>当前权重</th>
+                                    <th>目标权重</th>
+                                    <th>调整量</th>
+                                    <th>预测收益</th>
+                                    <th>置信度</th>
+                                    <th>操作建议</th>
+                                </tr>
+                            </thead>
+                            <tbody id="position-tbody">
+                                <tr class="placeholder-row">
+                                    <td colspan="7">请先完成前面步骤生成信号</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">信号统计</div>
+                    <div class="signal-stats">
+                        <div class="stat-box">
+                            <div class="stat-icon">📈</div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="long-count">--</div>
+                                <div class="stat-label">做多信号</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon">📉</div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="short-count">--</div>
+                                <div class="stat-label">做空信号</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon">⚖️</div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="neutral-count">--</div>
+                                <div class="stat-label">中性</div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-icon">🎯</div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="avg-confidence">--</div>
+                                <div class="stat-label">平均置信度</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">执行方案</div>
+                    <div class="execution-plan">
+                        <div class="plan-item">
+                            <span class="plan-label">调仓日期</span>
+                            <span class="plan-value">2026-04-03</span>
+                        </div>
+                        <div class="plan-item">
+                            <span class="plan-label">预计成交金额</span>
+                            <span class="plan-value">$ --</span>
+                        </div>
+                        <div class="plan-item">
+                            <span class="plan-label">预计交易成本</span>
+                            <span class="plan-value">$ -- (0.1%)</span>
+                        </div>
+                        <div class="plan-item">
+                            <span class="plan-label">目标组合波动率</span>
+                            <span class="plan-value">--%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quant-card">
+                    <div class="card-title">历史回测表现</div>
+                    <div id="backtest-chart" style="height: 300px;"></div>
+                </div>
+
+                <div class="action-bar">
+                    <button class="quant-btn secondary" onclick="goToStep('optimize')">上一步</button>
+                    <button class="quant-btn primary" onclick="generateSignals()">生成信号</button>
+                    <button class="quant-btn success" onclick="exportSignals()">导出信号</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='quant.js') }}"></script>
+</body>
+</html>
