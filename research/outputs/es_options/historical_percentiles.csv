@@ -1,0 +1,2 @@
+﻿sample_date,rv_source,iv_proxy_source,rv20,rv20_percentile,rv60,rv60_percentile,vix_iv_proxy,vix_iv_proxy_percentile
+2020-01-06,"Yahoo Finance ES=F daily close, 2015-01-01 to 2020-01-06","Yahoo Finance ^VIX daily close, 2015-01-01 to 2020-01-06",0.07315794758851876,0.2744148506860371,0.07172942222219503,0.20100083402835697,0.13850000381469726,0.47977795400475814

@@ -9,6 +9,10 @@ research/
 ├── data_fetcher.py          # 数据获取（Yahoo Finance / AKShare / GBM合成数据）
 ├── strategy_tqsdk.py        # 天勤策略回测（双均线 MA5/MA20 + MACD）
 ├── cointegration_arbitrage.py  # 协整套利全市场扫描 + 模拟交易
+├── option_iv_rv_greeks.py   # 期货期权1分钟数据：IV/RV、希腊字母、价格归因
+├── prepare_quantconnect_es_option_data.py  # 下载并转换ES期货期权分钟样本
+├── prepare_historical_percentiles.py  # 准备ES=F与VIX历史分位代理
+├── generate_option_homework_report.py  # 生成第八周作业DOCX/PDF/ZIP
 ├── generate_report.py       # 生成 PDF 研究报告
 ├── test_data.py             # 数据源快速测试
 └── outputs/                 # 自动生成的结果输出
@@ -41,6 +45,12 @@ python cointegration_arbitrage.py
 
 # 5. 生成 PDF 报告
 python generate_report.py
+
+# 6. 运行期货期权1分钟数据分析与第八周作业包生成
+python prepare_quantconnect_es_option_data.py
+python option_iv_rv_greeks.py --input ../data/processed/quantconnect_es_future_option_minute.csv --output-dir outputs/es_options --rv-window 60 --percentile-window 390 --minutes-per-year 347760 --rate 0.015
+python prepare_historical_percentiles.py
+python generate_option_homework_report.py
 ```
 
 ## 数据来源说明
