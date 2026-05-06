@@ -512,7 +512,160 @@ def build_pnl_summary(payoff: pd.DataFrame, scenario: pd.DataFrame, initial_valu
     }
 
 
-def save_plots(hist: pd.DataFrame, payoff: pd.DataFrame, greeks: pd.DataFrame, scenario: pd.DataFrame) -> None:
+def _simulate_terminal_spot(
+    spot0: float, drift: float, sigma: float, t: float, n_paths: int, rng: np.random.Generator
+) -> np.ndarray:
+    z = rng.standard_normal(n_paths)
+    return spot0 * np.exp((drift - 0.5 * sigma * sigma) * t + sigma * math.sqrt(t) * z)
+
+
+def _strategy_pnl_at_expiry(legs: list[OptionLeg], spot_t: np.ndarray) -> np.ndarray:
+    initial_value = sum(leg.quantity * leg.mid * CONTRACT_MULTIPLIER for leg in legs)
+    payoffs = np.zeros_like(spot_t, dtype=float)
+    for leg in legs:
+        if leg.option_type == "call":
+            leg_payoff = np.maximum(spot_t - leg.strike, 0.0)
+        else:
+            leg_payoff = np.maximum(leg.strike - spot_t, 0.0)
+        payoffs += leg.quantity * leg_payoff * CONTRACT_MULTIPLIER
+    return payoffs - initial_value
+
+
+def _mc_stats_block(pnl: np.ndarray, initial_value: float, label: str, drift: float, sigma: float) -> dict[str, float]:
+    sorted_pnl = np.sort(pnl)
+    n = len(pnl)
+    var_95 = float(-np.quantile(pnl, 0.05))
+    var_99 = float(-np.quantile(pnl, 0.01))
+    tail_5 = sorted_pnl[: max(int(0.05 * n), 1)]
+    tail_1 = sorted_pnl[: max(int(0.01 * n), 1)]
+    return {
+        "scenario": label,
+        "annual_drift_used": float(drift),
+        "annual_sigma_used": float(sigma),
+        "expected_pnl": float(pnl.mean()),
+        "median_pnl": float(np.median(pnl)),
+        "std_pnl": float(pnl.std(ddof=1)),
+        "min_pnl": float(pnl.min()),
+        "max_pnl": float(pnl.max()),
+        "prob_of_profit": float((pnl > 0).mean()),
+        "prob_loss_gt_half_premium": float((pnl < -0.5 * initial_value).mean()) if initial_value > 0 else float("nan"),
+        "var_95": var_95,
+        "var_99": var_99,
+        "cvar_95": float(-tail_5.mean()),
+        "cvar_99": float(-tail_1.mean()),
+        "p05": float(np.quantile(pnl, 0.05)),
+        "p25": float(np.quantile(pnl, 0.25)),
+        "p50": float(np.quantile(pnl, 0.50)),
+        "p75": float(np.quantile(pnl, 0.75)),
+        "p95": float(np.quantile(pnl, 0.95)),
+    }
+
+
+def monte_carlo_pnl(
+    legs: list[OptionLeg],
+    view: dict[str, object],
+    n_paths: int = 20000,
+    seed: int = RANDOM_SEED,
+) -> tuple[pd.DataFrame, dict[str, float], pd.DataFrame]:
+    """Lognormal Monte Carlo of strategy P&L at expiry.
+
+    We run two scenarios so the student can compare:
+      1. risk-neutral: drift = r - q, sigma = ATM IV (Black-Scholes consistent)
+      2. real-world:   drift = clipped historical 20-day annualized return,
+                        sigma = realised volatility RV60 (more stable than RV20)
+    The primary distribution returned is the risk-neutral one (academic default).
+    """
+    rng = np.random.default_rng(seed)
+    spot0 = float(view["spot"])
+    rv20 = float(view["rv20"])
+    rv60 = float(view["rv60"])
+    atm_iv = float(view["atm_iv"])
+    expiry = pd.Timestamp(str(view["expiry"]))
+    as_of = pd.Timestamp(str(view["as_of"]))
+    horizon_days = max((expiry - as_of).days, 1)
+    t = horizon_days / 365.0
+
+    rn_drift = RISK_FREE_RATE - DIVIDEND_YIELD
+    rn_sigma = max(atm_iv, 0.05)
+    rw_drift = float(np.clip(float(view["ret20"]) * 252.0 / 20.0, -0.30, 0.30))
+    rw_sigma = max(rv60, 0.05)
+
+    spot_rn = _simulate_terminal_spot(spot0, rn_drift, rn_sigma, t, n_paths, rng)
+    spot_rw = _simulate_terminal_spot(spot0, rw_drift, rw_sigma, t, n_paths, rng)
+    pnl_rn = _strategy_pnl_at_expiry(legs, spot_rn)
+    pnl_rw = _strategy_pnl_at_expiry(legs, spot_rw)
+    initial_value = sum(leg.quantity * leg.mid * CONTRACT_MULTIPLIER for leg in legs)
+
+    rn_block = _mc_stats_block(pnl_rn, initial_value, "risk_neutral", rn_drift, rn_sigma)
+    rw_block = _mc_stats_block(pnl_rw, initial_value, "real_world", rw_drift, rw_sigma)
+
+    paths_df = pd.DataFrame(
+        {
+            "spot_at_expiry_rn": spot_rn,
+            "strategy_pnl_rn": pnl_rn,
+            "spot_at_expiry_rw": spot_rw,
+            "strategy_pnl_rw": pnl_rw,
+        }
+    )
+    stats_df = pd.DataFrame([rn_block, rw_block])
+
+    primary = {
+        "n_paths": int(n_paths),
+        "horizon_days": int(horizon_days),
+        "rv20": rv20,
+        "rv60": rv60,
+        "atm_iv": atm_iv,
+        **rn_block,
+    }
+    primary["scenario"] = "risk_neutral"
+    return paths_df, primary, stats_df
+
+
+def multi_horizon_scenarios(
+    legs: list[OptionLeg],
+    view: dict[str, object],
+    horizons_days: tuple[int, ...] = (1, 7, 14, 21),
+    spot_moves: tuple[float, ...] = (-0.05, -0.02, 0.0, 0.02, 0.05),
+) -> pd.DataFrame:
+    """Reprice the strategy across (horizon, spot move) keeping IV unchanged."""
+    spot0 = float(view["spot"])
+    expiry = pd.Timestamp(str(view["expiry"]))
+    as_of = pd.Timestamp(str(view["as_of"]))
+    full_t = max((expiry - as_of).days, 1) / 365.0
+    initial_value = sum(leg.quantity * leg.mid * CONTRACT_MULTIPLIER for leg in legs)
+
+    rows = []
+    for h in horizons_days:
+        t_remain = max(full_t - h / 365.0, 1 / 365.0)
+        for move in spot_moves:
+            spot = spot0 * (1 + move)
+            value = 0.0
+            for leg in legs:
+                price = black_scholes_price(
+                    spot, leg.strike, t_remain, RISK_FREE_RATE, leg.implied_volatility, leg.option_type
+                )
+                value += leg.quantity * price * CONTRACT_MULTIPLIER
+            rows.append(
+                {
+                    "horizon_days": int(h),
+                    "spot_move": move,
+                    "spot": spot,
+                    "strategy_value": value,
+                    "pnl": value - initial_value,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def save_plots(
+    hist: pd.DataFrame,
+    payoff: pd.DataFrame,
+    greeks: pd.DataFrame,
+    scenario: pd.DataFrame,
+    mc_paths: pd.DataFrame | None = None,
+    mc_stats: dict[str, float] | None = None,
+    multi_horizon: pd.DataFrame | None = None,
+) -> None:
     import matplotlib.pyplot as plt
 
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -575,6 +728,45 @@ def save_plots(hist: pd.DataFrame, payoff: pd.DataFrame, greeks: pd.DataFrame, s
     plt.savefig(OUTPUT_DIR / "scenario_pnl_heatmap.png", dpi=160)
     plt.close()
 
+    if mc_paths is not None and mc_stats is not None:
+        pnl_col = "strategy_pnl_rn" if "strategy_pnl_rn" in mc_paths.columns else "strategy_pnl"
+        plt.figure(figsize=(10.0, 4.8))
+        ax = plt.gca()
+        ax.hist(mc_paths[pnl_col], bins=60, color="#4c78a8", alpha=0.85, edgecolor="white")
+        ax.axvline(0, color="#666666", linewidth=1.0, linestyle="--", label="Breakeven")
+        ax.axvline(-mc_stats["var_95"], color="#d62728", linewidth=1.2, label=f"VaR95={-mc_stats['var_95']:.0f}")
+        ax.axvline(-mc_stats["var_99"], color="#8c564b", linewidth=1.2, label=f"VaR99={-mc_stats['var_99']:.0f}")
+        ax.axvline(mc_stats["expected_pnl"], color="#2ca02c", linewidth=1.2, label=f"E[PnL]={mc_stats['expected_pnl']:.0f}")
+        ax.set_title(
+            f"Monte Carlo P&L distribution at expiry (risk-neutral, POP={mc_stats['prob_of_profit']:.1%}, n={mc_stats['n_paths']})"
+        )
+        ax.set_xlabel("Strategy P&L (USD)")
+        ax.set_ylabel("Frequency")
+        ax.legend(loc="upper right", fontsize=9)
+        plt.tight_layout()
+        plt.savefig(OUTPUT_DIR / "monte_carlo_pnl.png", dpi=160)
+        plt.close()
+
+    if multi_horizon is not None and not multi_horizon.empty:
+        plt.figure(figsize=(10.0, 4.8))
+        for h, sub in multi_horizon.groupby("horizon_days"):
+            sub_sorted = sub.sort_values("spot_move")
+            plt.plot(
+                [m * 100 for m in sub_sorted["spot_move"]],
+                sub_sorted["pnl"],
+                marker="o",
+                linewidth=1.6,
+                label=f"+{int(h)}d",
+            )
+        plt.axhline(0, color="#666666", linewidth=0.9)
+        plt.title("Multi-horizon P&L curves (IV unchanged)")
+        plt.xlabel("Spot move (%)")
+        plt.ylabel("Strategy P&L (USD)")
+        plt.legend(title="Horizon", loc="best")
+        plt.tight_layout()
+        plt.savefig(OUTPUT_DIR / "multi_horizon_pnl.png", dpi=160)
+        plt.close()
+
 
 def main() -> None:
     ensure_dirs()
@@ -591,21 +783,29 @@ def main() -> None:
     initial_value = sum(leg.quantity * leg.mid * CONTRACT_MULTIPLIER for leg in legs)
     pnl_summary = build_pnl_summary(payoff_df, scenario_df, initial_value)
 
+    mc_paths_df, mc_primary, mc_stats_df = monte_carlo_pnl(legs, view)
+    multi_horizon_df = multi_horizon_scenarios(legs, view)
+
     legs_df = pd.DataFrame([asdict(leg) for leg in legs])
     legs_df.to_csv(OUTPUT_DIR / "strategy_legs.csv", index=False, encoding="utf-8-sig")
     greeks_df.to_csv(OUTPUT_DIR / "portfolio_greeks.csv", index=False, encoding="utf-8-sig")
     payoff_df.to_csv(OUTPUT_DIR / "strategy_payoff.csv", index=False, encoding="utf-8-sig")
     scenario_df.to_csv(OUTPUT_DIR / "scenario_pnl.csv", index=False, encoding="utf-8-sig")
+    mc_paths_df.to_csv(OUTPUT_DIR / "monte_carlo_paths.csv", index=False, encoding="utf-8-sig")
+    mc_stats_df.to_csv(OUTPUT_DIR / "monte_carlo_stats.csv", index=False, encoding="utf-8-sig")
+    multi_horizon_df.to_csv(OUTPUT_DIR / "multi_horizon_pnl.csv", index=False, encoding="utf-8-sig")
 
     view["strategy_name"] = strategy_name
     view["pnl_summary"] = pnl_summary
+    view["mc_primary"] = mc_primary
+    view["mc_real_world"] = mc_stats_df.iloc[1].to_dict()
     view["contract_multiplier"] = CONTRACT_MULTIPLIER
     (OUTPUT_DIR / "view_summary.json").write_text(json.dumps(view, ensure_ascii=False, indent=2), encoding="utf-8")
     pd.DataFrame([view | {k: json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v for k, v in view.items()}]).to_csv(
         OUTPUT_DIR / "view_summary.csv", index=False, encoding="utf-8-sig"
     )
 
-    save_plots(hist, payoff_df, greeks_df, scenario_df)
+    save_plots(hist, payoff_df, greeks_df, scenario_df, mc_paths_df, mc_primary, multi_horizon_df)
     print(json.dumps(view, ensure_ascii=False, indent=2))
     print("Outputs:", OUTPUT_DIR.resolve())
 

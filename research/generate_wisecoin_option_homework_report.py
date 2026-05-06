@@ -93,15 +93,20 @@ def write_readme() -> None:
                 "主要内容：",
                 "1. 分析wisecoin_option类程序的数据下载流程和观点形成逻辑。",
                 "2. 新增模块A：组合策略希腊字母计算。",
-                "3. 新增模块B：策略到期盈亏和情景盈亏分析。",
+                "3. 新增模块B：策略盈亏分析，包括",
+                "   - 到期盈亏曲线（161点）",
+                "   - 7天后价格×IV情景重估热力图",
+                "   - 1/7/14/21天多时间断面情景",
+                "   - 风险中性 + 真实世界双假设的Monte Carlo模拟（20000路径）",
+                "     给出POP、期望盈亏、VaR95、CVaR95",
                 "",
                 "主要文件：",
                 f"- {SUBMISSION_NAME}.docx：Word报告。",
                 f"- {SUBMISSION_NAME}.pdf：PDF报告。",
-                "- code/wisecoin_option_analysis.py：数据下载、观点形成、组合Greeks与P&L分析。",
+                "- code/wisecoin_option_analysis.py：数据下载、观点形成、组合Greeks、所有盈亏分析。",
                 "- code/generate_wisecoin_option_homework_report.py：生成报告和提交包。",
                 "- data/：Yahoo/yfinance下载的SPY历史数据和期权链。",
-                "- outputs/：策略腿、组合Greeks、盈亏表、观点摘要和图形。",
+                "- outputs/：策略腿、组合Greeks、盈亏表、观点摘要和图形（共6张）。",
                 "",
                 "复现命令：",
                 "python research/wisecoin_option_analysis.py",
@@ -174,7 +179,17 @@ def load_outputs() -> dict[str, object]:
     greeks = pd.read_csv(OUTPUT_DIR / "portfolio_greeks.csv")
     payoff = pd.read_csv(OUTPUT_DIR / "strategy_payoff.csv")
     scenario = pd.read_csv(OUTPUT_DIR / "scenario_pnl.csv")
-    return {"view": view, "legs": legs, "greeks": greeks, "payoff": payoff, "scenario": scenario}
+    mc_stats = pd.read_csv(OUTPUT_DIR / "monte_carlo_stats.csv") if (OUTPUT_DIR / "monte_carlo_stats.csv").exists() else None
+    multi_horizon = pd.read_csv(OUTPUT_DIR / "multi_horizon_pnl.csv") if (OUTPUT_DIR / "multi_horizon_pnl.csv").exists() else None
+    return {
+        "view": view,
+        "legs": legs,
+        "greeks": greeks,
+        "payoff": payoff,
+        "scenario": scenario,
+        "mc_stats": mc_stats,
+        "multi_horizon": multi_horizon,
+    }
 
 
 def build_docx() -> None:
@@ -183,6 +198,8 @@ def build_docx() -> None:
     legs = data["legs"]
     greeks = data["greeks"]
     scenario = data["scenario"]
+    mc_stats = data["mc_stats"]
+    multi_horizon = data["multi_horizon"]
     total = greeks[greeks["contract_symbol"] == "TOTAL"].iloc[0]
     pnl = view["pnl_summary"]
 
@@ -275,17 +292,84 @@ def build_docx() -> None:
     add_bullet(doc, f"最佳情景：标的变动 {pct(best['spot_move'])}，IV变动 {pct(best['iv_shift'])}，7天后P&L约 {money(best['pnl_after_7d'])} 美元。")
     add_bullet(doc, f"最差情景：标的变动 {pct(worst['spot_move'])}，IV变动 {pct(worst['iv_shift'])}，7天后P&L约 {money(worst['pnl_after_7d'])} 美元。")
 
-    add_heading(doc, "五、结论")
+    if multi_horizon is not None and not multi_horizon.empty:
+        add_heading(doc, "五、模块B扩展1：多时间断面情景")
+        add_para(
+            doc,
+            "在保持隐含波动率不变的前提下，把策略价值在持仓1、7、14、21天后的5档价格点上重新定价，可以直观看到Theta消耗与价格弹性的相互作用。",
+        )
+        horizons = sorted(multi_horizon["horizon_days"].unique().tolist())
+        spot_moves = sorted(multi_horizon["spot_move"].unique().tolist())
+        mh_table = doc.add_table(rows=1, cols=1 + len(spot_moves))
+        mh_table.rows[0].cells[0].text = "持仓天数 \\ 标的变动"
+        for j, m in enumerate(spot_moves):
+            mh_table.rows[0].cells[j + 1].text = pct(m)
+        for h in horizons:
+            row = mh_table.add_row().cells
+            row[0].text = f"{int(h)} 天"
+            for j, m in enumerate(spot_moves):
+                cell = multi_horizon[(multi_horizon["horizon_days"] == h) & (multi_horizon["spot_move"] == m)]
+                row[j + 1].text = money(float(cell["pnl"].iloc[0]))
+        style_table(mh_table)
+        if (OUTPUT_DIR / "multi_horizon_pnl.png").exists():
+            doc.add_picture(str(OUTPUT_DIR / "multi_horizon_pnl.png"), width=Inches(5.7))
+            cap = doc.add_paragraph("图5  多时间断面盈亏曲线")
+            cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        center_now = multi_horizon[multi_horizon["spot_move"] == 0.0].sort_values("horizon_days")
+        if len(center_now) >= 2:
+            theta_drift = float(center_now["pnl"].iloc[-1] - center_now["pnl"].iloc[0])
+            add_bullet(doc, f"标的不动且IV不变时，从持仓1天到{int(center_now['horizon_days'].iloc[-1])}天的P&L变化约为 {money(theta_drift)} 美元，体现Theta累计影响。")
+
+    if mc_stats is not None and not mc_stats.empty:
+        add_heading(doc, "六、模块B扩展2：Monte Carlo盈亏与风险")
+        rn = mc_stats[mc_stats["scenario"] == "risk_neutral"].iloc[0]
+        rw = mc_stats[mc_stats["scenario"] == "real_world"].iloc[0]
+        add_para(
+            doc,
+            "为了量化策略到期盈亏的概率分布，对标的资产做对数正态Monte Carlo模拟（共20000条路径）。同时给出风险中性（drift=r=4%, sigma=ATM IV）与真实世界（drift=封顶后的近20日年化收益, sigma=RV60）两种漂移假设：前者代表市场公允定价隐含的成功率，后者代表近期价格趋势延续下的成功率。",
+        )
+        mc_table = doc.add_table(rows=1, cols=8)
+        for idx, h in enumerate([
+            "情景",
+            "drift",
+            "sigma",
+            "POP",
+            "E[P&L]",
+            "中位数",
+            "VaR95",
+            "CVaR95",
+        ]):
+            mc_table.rows[0].cells[idx].text = h
+        for label, row in [("风险中性", rn), ("真实世界", rw)]:
+            cells = mc_table.add_row().cells
+            cells[0].text = label
+            cells[1].text = pct(row["annual_drift_used"])
+            cells[2].text = pct(row["annual_sigma_used"])
+            cells[3].text = pct(row["prob_of_profit"])
+            cells[4].text = money(row["expected_pnl"])
+            cells[5].text = money(row["median_pnl"])
+            cells[6].text = money(row["var_95"])
+            cells[7].text = money(row["cvar_95"])
+        style_table(mc_table)
+        if (OUTPUT_DIR / "monte_carlo_pnl.png").exists():
+            doc.add_picture(str(OUTPUT_DIR / "monte_carlo_pnl.png"), width=Inches(5.9))
+            cap = doc.add_paragraph("图6  风险中性Monte Carlo盈亏分布")
+            cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        add_bullet(doc, f"风险中性POP={pct(rn['prob_of_profit'])}，期望盈亏≈{money(rn['expected_pnl'])}美元，体现市场对该结构的公允定价。")
+        add_bullet(doc, f"真实世界POP={pct(rw['prob_of_profit'])}，期望盈亏≈{money(rw['expected_pnl'])}美元，反映近期上涨趋势带来的方向性收益。")
+        add_bullet(doc, f"VaR95和CVaR95均等于权利金净支出 {money(rn['var_95'])}美元，符合牛市价差最大亏损被锁定为权利金的金融常识。")
+
+    add_heading(doc, "七、结论")
     add_para(
         doc,
-        "本次扩展使 wisecoin_option 类程序从单纯下载期权链和给出方向观点，升级为完整的策略评估流程：观点形成后能自动选组合，组合层面能看到Delta/Vega/Theta等风险暴露，盈亏模块能说明最大收益、最大亏损、盈亏平衡和短期情景风险。策略结论仅用于课程作业演示，真实交易还需要考虑滑点、手续费、成交量、提前行权和风险预算。",
+        "本次扩展使 wisecoin_option 类程序从单纯下载期权链和给出方向观点，升级为完整的策略评估流程：观点形成后能自动选组合，组合层面能看到Delta/Vega/Theta等风险暴露，盈亏模块从到期静态曲线、IV情景重估扩展到多时间断面情景与Monte Carlo POP/VaR/CVaR。这样既能定量回答\"现在赚钱概率多大、最坏可能亏多少\"，也能区分\"市场公允定价隐含的胜率\"与\"个人观点下的胜率\"。结论仅用于课程作业演示，真实交易还需考虑滑点、手续费、成交量、提前行权和风险预算。",
     )
 
-    add_heading(doc, "六、附件清单")
-    add_bullet(doc, "code/wisecoin_option_analysis.py：数据下载、观点形成、组合Greeks和P&L分析。")
+    add_heading(doc, "八、附件清单")
+    add_bullet(doc, "code/wisecoin_option_analysis.py：数据下载、观点形成、组合Greeks、到期盈亏、IV情景、多时间断面、Monte Carlo盈亏与风险。")
     add_bullet(doc, "code/generate_wisecoin_option_homework_report.py：生成Word/PDF和提交包。")
     add_bullet(doc, "data/：SPY历史行情与期权链CSV。")
-    add_bullet(doc, "outputs/：策略腿、组合Greeks、盈亏表、观点摘要和图形。")
+    add_bullet(doc, "outputs/：策略腿、组合Greeks、盈亏表、Monte Carlo路径与统计、多时间断面表、观点摘要和图形（共6张）。")
 
     doc.sections[0].footer.paragraphs[0].text = f"{SUBMISSION_NAME} | wisecoin_option程序分析"
     doc.save(REPORT_DOCX)
@@ -309,6 +393,8 @@ def build_pdf() -> None:
     legs = data["legs"]
     greeks = data["greeks"]
     scenario = data["scenario"]
+    mc_stats = data["mc_stats"]
+    multi_horizon = data["multi_horizon"]
     total = greeks[greeks["contract_symbol"] == "TOTAL"].iloc[0]
     pnl = view["pnl_summary"]
     font, bold = register_fonts()
@@ -366,10 +452,93 @@ def build_pdf() -> None:
     worst = scenario.loc[scenario["pnl_after_7d"].idxmin()]
     story.extend(
         [
-            Paragraph("三、盈亏结论", h),
+            Paragraph("三、盈亏结论（到期与7天IV情景）", h),
             p(f"初始净成本为{money(pnl['initial_value'])}美元，网格内最大盈利约{money(pnl['max_profit_in_grid'])}美元，最大亏损约{money(pnl['max_loss_in_grid'])}美元，盈亏平衡点约{', '.join(num(x) for x in pnl['breakevens_in_grid'])}。最佳7天情景P&L为{money(best['pnl_after_7d'])}美元，最差7天情景P&L为{money(worst['pnl_after_7d'])}美元。", body),
-            Paragraph("四、结论", h),
-            p("本作业把wisecoin_option类程序扩展为完整的期权策略研究流程：下载数据、形成观点、输出组合、计算组合Greeks，并进行到期与短期情景盈亏分析。结果可用于课程展示，真实交易仍需加入成交量、滑点、手续费和风险限额。", body),
+        ]
+    )
+
+    if multi_horizon is not None and not multi_horizon.empty:
+        horizons = sorted(multi_horizon["horizon_days"].unique().tolist())
+        spot_moves = sorted(multi_horizon["spot_move"].unique().tolist())
+        mh_table_data = [["持仓天数 \\ 标的"] + [pct(m) for m in spot_moves]]
+        for hh in horizons:
+            row = [f"{int(hh)}天"]
+            for m in spot_moves:
+                cell = multi_horizon[(multi_horizon["horizon_days"] == hh) & (multi_horizon["spot_move"] == m)]
+                row.append(money(float(cell["pnl"].iloc[0])))
+            mh_table_data.append(row)
+        mh_table = Table(mh_table_data, repeatRows=1)
+        mh_table.setStyle(
+            TableStyle(
+                [
+                    ("FONT", (0, 0), (-1, -1), font, 7.0),
+                    ("FONT", (0, 0), (-1, 0), bold, 7.2),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E79")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CCCCCC")),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ]
+            )
+        )
+        story.extend(
+            [
+                Paragraph("四、模块B扩展1：多时间断面情景", h),
+                p("保持隐含波动率不变，将策略价值在持仓1、7、14、21天后的5档价格点上重新定价，便于直观比较Theta消耗与价格弹性的相互作用。", body),
+                mh_table,
+                Spacer(1, 4),
+            ]
+        )
+        path = OUTPUT_DIR / "multi_horizon_pnl.png"
+        if path.exists():
+            story.extend([Image(str(path), width=14.2 * cm, height=6.2 * cm), Paragraph("图5 多时间断面盈亏曲线", cap), Spacer(1, 4)])
+
+    if mc_stats is not None and not mc_stats.empty:
+        rn = mc_stats[mc_stats["scenario"] == "risk_neutral"].iloc[0]
+        rw = mc_stats[mc_stats["scenario"] == "real_world"].iloc[0]
+        mc_table_data = [["情景", "drift", "sigma", "POP", "E[P&L]", "中位数", "VaR95", "CVaR95"]]
+        for label, row in [("风险中性", rn), ("真实世界", rw)]:
+            mc_table_data.append(
+                [
+                    label,
+                    pct(row["annual_drift_used"]),
+                    pct(row["annual_sigma_used"]),
+                    pct(row["prob_of_profit"]),
+                    money(row["expected_pnl"]),
+                    money(row["median_pnl"]),
+                    money(row["var_95"]),
+                    money(row["cvar_95"]),
+                ]
+            )
+        mc_table = Table(mc_table_data, repeatRows=1)
+        mc_table.setStyle(
+            TableStyle(
+                [
+                    ("FONT", (0, 0), (-1, -1), font, 7.0),
+                    ("FONT", (0, 0), (-1, 0), bold, 7.2),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E79")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CCCCCC")),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ]
+            )
+        )
+        story.extend(
+            [
+                Paragraph("五、模块B扩展2：Monte Carlo盈亏与风险", h),
+                p("对标的资产做对数正态Monte Carlo模拟（20000条路径）。风险中性假设drift=r=4%、sigma=ATM IV，反映市场公允定价隐含的成功率；真实世界假设drift=封顶后近20日年化收益、sigma=RV60，反映近期价格趋势延续下的成功率。", body),
+                mc_table,
+                Spacer(1, 4),
+                p(f"风险中性POP={pct(rn['prob_of_profit'])}，期望盈亏≈{money(rn['expected_pnl'])}美元；真实世界POP={pct(rw['prob_of_profit'])}，期望盈亏≈{money(rw['expected_pnl'])}美元。VaR95与CVaR95均等于权利金净支出，符合牛市价差最大亏损被锁定的金融常识。", body),
+            ]
+        )
+        path = OUTPUT_DIR / "monte_carlo_pnl.png"
+        if path.exists():
+            story.extend([Image(str(path), width=14.2 * cm, height=6.2 * cm), Paragraph("图6 风险中性Monte Carlo盈亏分布", cap), Spacer(1, 4)])
+
+    story.extend(
+        [
+            Paragraph("六、结论", h),
+            p("本作业把wisecoin_option类程序扩展为完整的期权策略研究流程：下载数据、形成观点、自动选组合、组合层面Greeks、到期与IV情景盈亏、多时间断面、Monte Carlo POP/VaR/CVaR。既能定量回答\"现在赚钱概率多大、最坏可能亏多少\"，也能区分\"市场公允定价隐含的胜率\"与\"个人观点下的胜率\"。结果用于课程展示，真实交易需加入成交量、滑点、手续费和风险限额。", body),
         ]
     )
     doc.build(story)
