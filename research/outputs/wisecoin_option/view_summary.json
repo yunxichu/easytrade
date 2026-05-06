@@ -1,0 +1,34 @@
+{
+  "ticker": "SPY",
+  "data_source": "yfinance",
+  "as_of": "2026-05-06",
+  "expiry": "2026-06-18",
+  "dte": 43,
+  "spot": 732.3900146484375,
+  "ma20": 707.4995025634765,
+  "ma60": 683.0950012207031,
+  "ret20": 0.08340113913751024,
+  "rv20": 0.09902770518696019,
+  "rv60": 0.149531163588908,
+  "rsi14": 75.2589453152044,
+  "atm_iv": 0.14739316970825198,
+  "iv_minus_rv20": 0.048365464521291784,
+  "trend_score": 1,
+  "directional_view": "bullish",
+  "directional_view_cn": "偏多",
+  "volatility_view": "IV高于近期RV，权利金偏贵",
+  "strategy_name": "牛市看涨价差",
+  "pnl_summary": {
+    "initial_value": 1209.0,
+    "max_profit_in_grid": 1591.0000000000005,
+    "max_loss_in_grid": -1209.0,
+    "best_expiry_price_in_grid": 785.4882907104492,
+    "worst_expiry_price_in_grid": 585.91201171875,
+    "breakevens_in_grid": [
+      744.09
+    ],
+    "scenario_best_pnl": 1244.4754150368371,
+    "scenario_worst_pnl": -1055.883436519871
+  },
+  "contract_multiplier": 100
+}
