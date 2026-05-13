@@ -1,0 +1,38 @@
+[
+  {
+    "ticker": "SPY",
+    "as_of": "2026-05-13T10:25:57",
+    "spot": 738.1799926757812,
+    "computed_vix": 17.724768471045955,
+    "reference_index": "^VIX (CBOE 30-day SPX IV)",
+    "reference_value": 17.920000076293945,
+    "near_expiry": "2026-06-12",
+    "next_expiry": "2026-06-18",
+    "near_sigma2": 0.03137925237096515,
+    "next_sigma2": 0.03620883344309268,
+    "near_forward": 739.7592106857086,
+    "near_k0": 739.0,
+    "next_forward": 739.4177097405246,
+    "next_k0": 739.0,
+    "near_num_strikes": 85,
+    "next_num_strikes": 202
+  },
+  {
+    "ticker": "USO",
+    "as_of": "2026-05-13T10:25:58",
+    "spot": 144.3000030517578,
+    "computed_vix": 77.74324110934933,
+    "reference_index": "^OVX (CBOE 30-day crude IV)",
+    "reference_value": 75.69000244140625,
+    "near_expiry": "2026-06-12",
+    "next_expiry": "2026-06-18",
+    "near_sigma2": 0.604280414161628,
+    "next_sigma2": 0.61983011765316,
+    "near_forward": 143.8294409025932,
+    "near_k0": 143.0,
+    "next_forward": 144.54822307511802,
+    "next_k0": 144.0,
+    "near_num_strikes": 48,
+    "next_num_strikes": 122
+  }
+]

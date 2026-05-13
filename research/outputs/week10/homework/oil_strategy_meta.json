@@ -1,0 +1,10 @@
+{
+  "ticker": "USO",
+  "data_source": "cached",
+  "spot": 144.3000030517578,
+  "as_of": "2026-05-13",
+  "near_expiry": "2026-06-12",
+  "near_dte": 30,
+  "far_expiry": "2026-07-17",
+  "far_dte": 65
+}
